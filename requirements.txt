@@ -10,4 +10,8 @@ transformers
 datasets
 scikit-learn
 torch
-accelerate 
+accelerate
+
+# Task 5
+shap
+lime 
