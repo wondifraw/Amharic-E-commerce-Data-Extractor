@@ -34,11 +34,11 @@ class TelegramScraper:
             List[str]: A list of channel usernames.
         """
         return [
+            '@ZemenExpress',
+            '@nevacomputer',
+            '@meneshayeofficial',
+            '@ethio_brand_collection',
             '@Leyueqa',
-            '@sinayelj',
-            '@Shewabrand',
-            '@helloomarketethiopia',
-            '@modernshoppingcenter',
         ]
 
     async def fetch_messages(self, channel: str, limit: int = 100) -> List[Dict]:
