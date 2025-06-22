@@ -88,7 +88,7 @@ Amharic-E-commerce-Data-Extractor/
 
 1.  **Clone the Repository:**
     ```sh
-    git clone <your-repository-url>
+    git clone <[your-repository-url](https://github.com/wondifraw/Amharic-E-commerce-Data-Extractor.git)>
     cd Amharic-E-commerce-Data-Extractor
     ```
 
