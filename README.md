@@ -38,16 +38,6 @@ The core business challenge is to automate the identification of products, brand
 
 The project follows a sequential data pipeline, from raw data collection to a model-ready format.
 
-```mermaid
-graph TD
-    A[📢 Telegram Channels] --> B(📨 Telegram Scraper);
-    B --> C[/📄 Raw Data (.json)/];
-    C --> D(🧼 Preprocessing & Cleaning);
-    D --> E[/📝 Cleaned Data (.csv)/];
-    E --> F(🤖 Automated Labeling);
-    F --> G[/📦 CoNLL Formatted Data/];
-    G --> H(🤖 NER Model Training);
-```
 
 ## Project Structure
 
