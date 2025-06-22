@@ -7,6 +7,7 @@ from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
 import os
 import json
 from typing import List, Dict
+import pandas as pd
 
 class TelegramScraper:
     """
@@ -19,7 +20,7 @@ class TelegramScraper:
         Args:
             api_id (str): Your Telegram API ID.
             api_hash (str): Your Telegram API hash.
-            session_name (str): The name of the session file.
+ 
         """
         self.api_id = api_id
         self.api_hash = api_hash
@@ -41,7 +42,7 @@ class TelegramScraper:
             '@Leyueqa',
         ]
 
-    async def fetch_messages(self, channel: str, limit: int = 100) -> List[Dict]:
+    async def fetch_messages(self, channel: str, limit: int = 1000) -> List[Dict]:
         """
         Fetches messages from a given Telegram channel.
 
@@ -56,30 +57,28 @@ class TelegramScraper:
         try:
             print(f"Connecting to Telegram...")
             async with self.client:
+                print(f"Fetching channel entity for {channel}...")
+                entity = await self.client.get_entity(channel)
+                channel_title = getattr(entity, 'title', None)
+                channel_username = getattr(entity, 'username', channel.strip('@'))
                 print(f"Fetching messages from {channel}...")
                 async for msg in self.client.iter_messages(channel, limit=limit):
                     media_path = None
-                    media_type = None
                     if msg.media:
                         media_dir = os.path.join('data', 'raw', channel.strip('@'), 'media')
                         os.makedirs(media_dir, exist_ok=True)
                         try:
                             media_path = await msg.download_media(file=media_dir)
-                            if isinstance(msg.media, MessageMediaPhoto):
-                                media_type = 'photo'
-                            elif isinstance(msg.media, MessageMediaDocument):
-                                media_type = 'document'
                         except Exception as e:
                             print(f"Could not download media for message {msg.id}: {e}")
 
                     msg_dict = {
-                        'id': msg.id,
-                        'date': str(msg.date),
-                        'sender_id': msg.sender_id,
-                        'text': msg.text,
-                        'views': msg.views,
-                        'media_type': media_type,
-                        'media_path': media_path
+                        'Channel Title': channel_title,
+                        'Channel Username': channel_username,
+                        'ID': msg.id,
+                        'Message': msg.text,
+                        'Date': str(msg.date),
+                        'Media Path': media_path
                     }
                     messages.append(msg_dict)
             print(f"Successfully fetched {len(messages)} messages from {channel}.")
@@ -99,6 +98,22 @@ class TelegramScraper:
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
             with open(out_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"Data successfully saved to {out_path}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save data to {out_path}: {e}")
+
+    def save_data_csv(self, data: List[Dict], out_path: str):
+        """
+        Saves data to a CSV file.
+
+        Args:
+            data (List[Dict]): The data to save.
+            out_path (str): The path to the output CSV file.
+        """
+        try:
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            df = pd.DataFrame(data)
+            df.to_csv(out_path, index=False, encoding='utf-8-sig')
             print(f"Data successfully saved to {out_path}")
         except Exception as e:
             print(f"[ERROR] Failed to save data to {out_path}: {e}") 
