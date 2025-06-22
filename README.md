@@ -7,14 +7,21 @@
 This project provides an end-to-end pipeline for scraping, preprocessing, and preparing Amharic text data from Telegram e-commerce channels. The primary objective is to build a high-quality, labeled dataset for training a Named Entity Recognition (NER) model to automate product information extraction for **EthioMart**.
 
 ## Table of Contents
-- [Project Goal](#project-goal)
-- [Features](#features)
-- [Workflow](#workflow)
-- [Project Structure](#project-structure)
-- [Setup and Installation](#setup-and-installation)
-- [Usage Guide](#usage-guide)
-- [Contributing](#contributing)
-- [License](#license)
+- [Amharic E-commerce Data Extractor for NER](#amharic-e-commerce-data-extractor-for-ner)
+  - [Table of Contents](#table-of-contents)
+  - [Project Goal](#project-goal)
+  - [Features](#features)
+  - [Workflow](#workflow)
+  - [Project Structure](#project-structure)
+  - [Setup and Installation](#setup-and-installation)
+    - [Prerequisites](#prerequisites)
+    - [Installation Steps](#installation-steps)
+  - [Usage Guide](#usage-guide)
+    - [1. Data Ingestion \& Preprocessing](#1-data-ingestion--preprocessing)
+    - [2. Automated Labeling \& CoNLL Formatting](#2-automated-labeling--conll-formatting)
+    - [Using Scripts (Alternative)](#using-scripts-alternative)
+  - [Contributing](#contributing)
+  - [License](#license)
 
 ## Project Goal
 
@@ -34,10 +41,10 @@ The project follows a sequential data pipeline, from raw data collection to a mo
 ```mermaid
 graph TD
     A[📢 Telegram Channels] --> B(📨 Telegram Scraper);
-    B --> C[/📄 Raw Data (.csv)/];
+    B --> C[/📄 Raw Data (.json)/];
     C --> D(🧼 Preprocessing & Cleaning);
     D --> E[/📝 Cleaned Data (.csv)/];
-    E --> F(🏷️ Manual Labeling);
+    E --> F(🤖 Automated Labeling);
     F --> G[/📦 CoNLL Formatted Data/];
     G --> H(🤖 NER Model Training);
 ```
@@ -52,8 +59,8 @@ Amharic-E-commerce-Data-Extractor/
 │   └── raw/            # Raw scraped data from Telegram
 │
 ├── notebooks/
-│   ├── 1_Data_Ingestion_and_Preprocessing.ipynb
-│   └── 2_Labeling_and_CoNLL_Conversion.ipynb
+│   ├── 1_Data_Ingestion.ipynb
+│   └── 2_Data_Labeling.ipynb
 │
 ├── src/
 │   ├── ingestion/
@@ -63,6 +70,10 @@ Amharic-E-commerce-Data-Extractor/
 │   └── labeling/
 │       └── conll_formatter.py
 │
+├── scripts/
+|   ├── task_1_ingest.py
+|   └── task_2_label.py
+|
 ├── requirements.txt
 └── README.md
 ```
@@ -91,23 +102,42 @@ Amharic-E-commerce-Data-Extractor/
     ```sh
     pip install -r requirements.txt
     ```
+4.  **Telegram API Credentials:**
+    You will need to get your own API credentials from [my.telegram.org](https://my.telegram.org).
 
 ## Usage Guide
 
-### 1. Data Ingestion & Preprocessing
-- Open `notebooks/1_Data_Ingestion_and_Preprocessing.ipynb`.
-- **Provide Credentials**: Replace `'YOUR_API_ID'` and `'YOUR_API_HASH'` with your Telegram API keys.
-- **Run the Notebook**: Execute the cells to scrape raw data and save it to `data/raw/`. The notebook will then preprocess the data and save the cleaned version to `data/processed/`.
+The primary way to run the pipeline is through the Jupyter notebooks provided in the `notebooks/` directory.
 
-### 2. Labeling & CoNLL Formatting
-- Open `notebooks/2_Labeling_and_CoNLL_Conversion.ipynb`.
-- **Perform Manual Annotation**: This notebook loads the cleaned data. You must manually define your entity labels (e.g., `B-PRODUCT`, `I-PRODUCT`) in the `labels` column. A placeholder is provided, which labels all tokens as `O` (Outside).
-- **Generate CoNLL File**: Run the final cells to format the data into a `.conll` file, which will be saved in `data/processed/` and is ready for model training.
+### 1. Data Ingestion & Preprocessing
+- Open `notebooks/1_Data_Ingestion.ipynb`.
+- **Provide Credentials**: In the second cell, replace the placeholder values for `API_ID` and `API_HASH` with your Telegram API keys.
+- **Run the Notebook**: Execute the cells sequentially. The notebook will:
+    1. Scrape raw data from the predefined Telegram channels.
+    2. Save the raw messages to `data/raw/`.
+    3. Preprocess the text data.
+    4. Save the cleaned, processed data to `data/processed/`.
+
+### 2. Automated Labeling & CoNLL Formatting
+- Open `notebooks/2_Data_Labeling.ipynb`.
+- **Run the Notebook**: Execute the cells to load the cleaned data and apply rule-based labeling for entities like `PRODUCT`, `PRICE`, `PHONE`, and `LOCATION`.
+- **Generate CoNLL File**: The final cell will format the labeled data into a `.conll` file and save it in `data/processed/`, ready for NER model training.
+
+### Using Scripts (Alternative)
+You can also run the pipeline using the Python scripts in the `scripts/` directory.
+
+```sh
+# Run data ingestion (requires API credentials as arguments)
+python scripts/task_1_ingest.py --api_id YOUR_ID --api_hash YOUR_HASH
+
+# Run data labeling
+python scripts/task_2_label.py
+```
 
 ## Contributing
 
-Contributions are highly encouraged! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+Contributions are highly encouraged! Please open an issue or submit a pull request with your proposed changes.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE.md) file for details.
+This project is licensed under the MIT License.
