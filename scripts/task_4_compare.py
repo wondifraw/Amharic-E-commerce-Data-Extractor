@@ -6,6 +6,10 @@ import os
 import time
 import json
 import logging
+import argparse
+import sys
+import platform
+from datetime import datetime
 from transformers import AutoTokenizer
 from src.ner.ner_pipeline import (
     load_conll_data,
@@ -15,10 +19,10 @@ from src.ner.ner_pipeline import (
     train_ner_model,
 )
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 logger = logging.getLogger("task_4_compare")
 
-# List of models to compare
+# Default list of models to compare
 MODEL_LIST = [
     'xlm-roberta-base',  # Large multilingual model
     'distilbert-base-multilingual-cased',  # Lightweight multilingual model
@@ -28,7 +32,13 @@ MODEL_LIST = [
 
 CONLL_PATH = 'data/processed/labeled_dataset.conll'
 OUTPUT_BASE = 'models/ner_finetuned'
+COMPARISON_REPORT_PATH = 'models/ner_finetuned/comparison_report.json'
 
+
+def log_environment_info():
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Platform: {platform.platform()}")
+    logger.info(f"Datetime: {datetime.now().isoformat()}")
 
 def evaluate_and_save(model_name, all_tokens, all_labels, unique_labels, params):
     """
@@ -64,7 +74,24 @@ def evaluate_and_save(model_name, all_tokens, all_labels, unique_labels, params)
                 metrics = json.load(f)
         else:
             metrics = {}
+        # Output validation
+        model_files = [f for f in os.listdir(output_dir) if f.endswith('.bin') or f.endswith('.pt') or f.startswith('pytorch_model')]
+        if not os.path.exists(metrics_path):
+            logger.error(f"[ERROR] Metrics file not found for {model_name} at {metrics_path}")
+        if not model_files:
+            logger.error(f"[ERROR] No model weights found in {output_dir}")
         logger.info(f"Finished {model_name} in {elapsed:.1f}s. Metrics: {metrics}")
+        # Save sample predictions for interpretability
+        sample_preds_path = os.path.join(output_dir, "sample_predictions.json")
+        try:
+            sample_preds = []
+            for i, tokens in enumerate(all_tokens[:3]):
+                sample_preds.append({"tokens": tokens})
+            with open(sample_preds_path, "w", encoding="utf-8") as f:
+                json.dump(sample_preds, f, ensure_ascii=False, indent=2)
+            logger.info(f"Sample predictions saved to {sample_preds_path}")
+        except Exception as e:
+            logger.warning(f"Failed to save sample predictions: {e}")
         return {
             'model': model_name,
             'metrics': metrics,
@@ -72,7 +99,7 @@ def evaluate_and_save(model_name, all_tokens, all_labels, unique_labels, params)
             'output_dir': output_dir
         }
     except Exception as e:
-        logger.error(f"Error processing {model_name}: {e}")
+        logger.error(f"Error processing {model_name}: {e}", exc_info=True)
         return {
             'model': model_name,
             'metrics': {},
@@ -84,9 +111,11 @@ def evaluate_and_save(model_name, all_tokens, all_labels, unique_labels, params)
 def compare_models(results):
     """
     Compare models based on F1, accuracy, and speed. Print a summary and select the best.
+    Returns best model and summary dict.
     """
     best_f1 = -1
     best_model = None
+    summary = {}
     print("\n--- 📊 Model Comparison ---")
     for res in results:
         model = res['model']
@@ -100,6 +129,7 @@ def compare_models(results):
         print(f"  Accuracy: {acc}")
         print(f"  Loss: {loss}")
         print(f"  Time: {t:.1f}s" if t else "  Time: N/A")
+        summary[model] = metrics
         if f1 is not None and f1 > best_f1:
             best_f1 = f1
             best_model = model
@@ -108,19 +138,29 @@ def compare_models(results):
         print(f"\n🏆 Best model: {best_model} (F1: {best_f1})")
     else:
         print("No valid metrics found for any model.")
-
+    return best_model, summary
 
 def main():
-    # Hyperparameters and settings
+    parser = argparse.ArgumentParser(description="Compare and select the best NER model. Fine-tunes multiple models, logs metrics, and saves a comparison report.")
+    parser.add_argument('--models', nargs='+', default=MODEL_LIST, help='List of model names to compare.')
+    parser.add_argument('--epochs', type=int, default=5, help='Number of training epochs (default: 5)')
+    parser.add_argument('--batch_size', type=int, default=8, help='Batch size per device (default: 8)')
+    parser.add_argument('--learning_rate', type=float, default=3e-5, help='Learning rate (default: 3e-5)')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed (default: 42)')
+    parser.add_argument('--max_length', type=int, default=128, help='Max sequence length (default: 128)')
+    parser.add_argument('--test_size', type=float, default=0.2, help='Validation split fraction (default: 0.2)')
+    args = parser.parse_args()
     params = {
-        'epochs': 5,
-        'batch_size': 8,
-        'learning_rate': 3e-5,
-        'seed': 42,
-        'max_length': 128,
-        'test_size': 0.2,
+        'epochs': args.epochs,
+        'batch_size': args.batch_size,
+        'learning_rate': args.learning_rate,
+        'seed': args.seed,
+        'max_length': args.max_length,
+        'test_size': args.test_size,
     }
     logger.info("--- Loading data ---")
+    log_environment_info()
+    logger.info(f"Parameters: {params}")
     all_tokens, all_labels, unique_labels = load_conll_data(CONLL_PATH)
     if not all_tokens:
         logger.error("No data loaded. Exiting.")
@@ -130,12 +170,30 @@ def main():
 
     # Fine-tune and evaluate each model
     results = []
-    for model_name in MODEL_LIST:
+    for model_name in args.models:
         res = evaluate_and_save(model_name, all_tokens, all_labels, unique_labels, params)
         results.append(res)
 
     # Compare and select the best model
-    compare_models(results)
+    best_model, summary = compare_models(results)
+    # Save comparison report
+    try:
+        report = {
+            "best_model": best_model,
+            "summary": summary,
+            "parameters": params,
+            "environment": {
+                "python_version": sys.version,
+                "platform": platform.platform(),
+                "datetime": datetime.now().isoformat()
+            }
+        }
+        os.makedirs(os.path.dirname(COMPARISON_REPORT_PATH), exist_ok=True)
+        with open(COMPARISON_REPORT_PATH, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+        logger.info(f"Comparison report saved to {COMPARISON_REPORT_PATH}")
+    except Exception as e:
+        logger.error(f"Failed to save comparison report: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main() 
