@@ -6,17 +6,21 @@ Enhanced for flexibility, logging, and user experience.
 import os
 import argparse
 import logging
+import json
+import sys
+import platform
+from datetime import datetime
 from transformers import AutoTokenizer
 from src.ner.dataset import load_conll_data, create_ner_datasets, print_label_distribution, preview_samples
 from src.ner.train import train_ner_model
-import json
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 logger = logging.getLogger("task_3_finetune")
 
 # --- Configuration ---
 CONLL_PATH = 'data/processed/labeled_dataset.conll'
 OUTPUT_BASE = 'models/ner_finetuned'
+SUMMARY_REPORT_PATH = 'models/ner_finetuned/finetune_summary.json'
 
 # A list of models to train and compare
 MODEL_LIST = [
@@ -28,9 +32,11 @@ MODEL_LIST = [
 def compare_and_print_results(model_names, output_base):
     """
     Compare models based on F1 score and print a summary.
+    Returns best model and summary dict.
     """
     best_f1 = -1
     best_model = None
+    summary = {}
     logger.info("\n--- 📊 Model Performance Comparison ---")
     for model_name in model_names:
         model_folder = model_name.replace('/', '_')
@@ -43,6 +49,7 @@ def compare_and_print_results(model_names, output_base):
             logger.info(f"  F1 Score: {f1}")
             logger.info(f"  Accuracy: {metrics.get('accuracy', metrics.get('eval_accuracy', 'N/A'))}")
             logger.info(f"  Loss:     {metrics.get('loss', metrics.get('eval_loss', 'N/A'))}")
+            summary[model_name] = metrics
             if f1 is not None and f1 > best_f1:
                 best_f1 = f1
                 best_model = model_name
@@ -53,13 +60,21 @@ def compare_and_print_results(model_names, output_base):
         logger.info(f"\n🏆 Best model: {best_model} (F1: {best_f1})")
     else:
         logger.warning("No valid metrics found for any model.")
+    return best_model, summary
+
+def log_environment_info():
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Platform: {platform.platform()}")
+    logger.info(f"Datetime: {datetime.now().isoformat()}")
 
 def main(models_to_train, epochs, batch_size, learning_rate, seed, max_length, test_size):
     """
     Main function to execute the NER model fine-tuning pipeline for a list of models.
-    Enhanced for flexibility, logging, and user experience.
+    Enhanced for flexibility, logging, validation, and reproducibility.
     """
     logger.info("--- Starting NER Model Fine-Tuning Pipeline ---")
+    log_environment_info()
+    logger.info(f"Parameters: models={models_to_train}, epochs={epochs}, batch_size={batch_size}, lr={learning_rate}, seed={seed}, max_length={max_length}, test_size={test_size}")
 
     # 1. Load labeled data and dynamically extract unique labels
     logger.info(f"Loading data from {CONLL_PATH}...")
@@ -101,17 +116,50 @@ def main(models_to_train, epochs, batch_size, learning_rate, seed, max_length, t
                 use_early_stopping=True,
                 seed=seed
             )
+            # Validate output
+            metrics_path = os.path.join(output_dir, "evaluation_metrics.json")
+            model_files = [f for f in os.listdir(output_dir) if f.endswith('.bin') or f.endswith('.pt') or f.startswith('pytorch_model')]
+            if not os.path.exists(metrics_path):
+                logger.error(f"[ERROR] Metrics file not found for {model_name} at {metrics_path}")
+            if not model_files:
+                logger.error(f"[ERROR] No model weights found in {output_dir}")
             logger.info(f"✅ Finished fine-tuning {model_name}. Results are in: {output_dir}")
         except Exception as e:
-            logger.error(f"[ERROR] Failed to process model '{model_name}'. Error: {e}")
+            logger.error(f"[ERROR] Failed to process model '{model_name}'. Error: {e}", exc_info=True)
             continue # Move to the next model
 
     logger.info("\n--- NER Model Fine-Tuning Pipeline Finished! ---")
-    compare_and_print_results(models_to_train, OUTPUT_BASE)
+    best_model, summary = compare_and_print_results(models_to_train, OUTPUT_BASE)
+    # Save summary report
+    try:
+        report = {
+            "best_model": best_model,
+            "summary": summary,
+            "parameters": {
+                "models": models_to_train,
+                "epochs": epochs,
+                "batch_size": batch_size,
+                "learning_rate": learning_rate,
+                "seed": seed,
+                "max_length": max_length,
+                "test_size": test_size
+            },
+            "environment": {
+                "python_version": sys.version,
+                "platform": platform.platform(),
+                "datetime": datetime.now().isoformat()
+            }
+        }
+        os.makedirs(os.path.dirname(SUMMARY_REPORT_PATH), exist_ok=True)
+        with open(SUMMARY_REPORT_PATH, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+        logger.info(f"Summary report saved to {SUMMARY_REPORT_PATH}")
+    except Exception as e:
+        logger.error(f"Failed to save summary report: {e}", exc_info=True)
     logger.info("Compare 'evaluation_metrics.json' in each model's output directory to select the best one.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Fine-tune and compare NER models.")
+    parser = argparse.ArgumentParser(description="Fine-tune and compare NER models. This script loads a labeled CoNLL file, fine-tunes multiple Hugging Face models, and saves metrics and a summary report.")
     parser.add_argument(
         "--models",
         nargs='+',
