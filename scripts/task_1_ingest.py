@@ -9,8 +9,8 @@ import asyncio
 import os
 import argparse
 import logging
-from src.ingestion.telegram_scraper import TelegramScraper
-from src.preprocessing.amharic_text import preprocess_messages
+from src.telegram_data_ingestion.telegram_scraper import TelegramScraper
+from src.amharic_text_processing.amharic_text import preprocess_messages
 
 API_ID = os.getenv("TELEGRAM_API_ID")
 API_HASH = os.getenv("TELEGRAM_API_HASH")
