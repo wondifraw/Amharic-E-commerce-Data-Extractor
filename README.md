@@ -1,133 +1,152 @@
-# Amharic E-commerce Data Extractor for NER
-
-![License](https://img.shields.io/badge/License-MIT-blue.svg)
-![Python Version](https://img.shields.io/badge/Python-3.8+-brightgreen.svg)
-![Contributions Welcome](https://img.shields.io/badge/Contributions-welcome-orange.svg)
-
-This project provides an end-to-end pipeline for scraping, preprocessing, and preparing Amharic text data from Telegram e-commerce channels. The primary objective is to build a high-quality, labeled dataset for training a Named Entity Recognition (NER) model to automate product information extraction for **EthioMart**.
+# Amharic E-commerce Data Extractor
 
 ## Table of Contents
-- [Amharic E-commerce Data Extractor for NER](#amharic-e-commerce-data-extractor-for-ner)
+- [Amharic E-commerce Data Extractor](#amharic-e-commerce-data-extractor)
   - [Table of Contents](#table-of-contents)
-  - [Project Goal](#project-goal)
-  - [Features](#features)
-  - [Workflow](#workflow)
-  - [Project Structure](#project-structure)
-  - [Setup and Installation](#setup-and-installation)
-    - [Prerequisites](#prerequisites)
-    - [Installation Steps](#installation-steps)
-  - [Usage Guide](#usage-guide)
-    - [1. Data Ingestion \& Preprocessing](#1-data-ingestion--preprocessing)
-    - [2. Automated Labeling \& CoNLL Formatting](#2-automated-labeling--conll-formatting)
-    - [Using Scripts (Alternative)](#using-scripts-alternative)
+  - [Overview](#overview)
+  - [Objectives](#objectives)
+  - [Main Features](#main-features)
+    - [Data Ingestion](#data-ingestion)
+    - [Preprocessing](#preprocessing)
+    - [Data Labeling](#data-labeling)
+    - [NER Model Fine-Tuning](#ner-model-fine-tuning)
+    - [Model Comparison \& Selection](#model-comparison--selection)
+    - [Explainability](#explainability)
+    - [Vendor Scorecard](#vendor-scorecard)
+  - [Directory Structure](#directory-structure)
+  - [Getting Started](#getting-started)
+    - [1. Clone the Repository](#1-clone-the-repository)
+    - [2. Install Requirements](#2-install-requirements)
+    - [3. Run Main Tasks](#3-run-main-tasks)
+    - [4. Use in Jupyter Notebooks](#4-use-in-jupyter-notebooks)
+  - [Requirements](#requirements)
   - [Contributing](#contributing)
-  - [License](#license)
+  - [Contact](#contact)
+  - [GitHub](#github)
 
-## Project Goal
+---
 
-The core business challenge is to automate the identification of products, brands, and other key entities from unstructured Amharic posts on Telegram. This NER system will enable EthioMart to streamline its product cataloging process, improve search accuracy, and enhance customer experience.
+## Overview
+This project provides a robust, modular pipeline for extracting, labeling, and analyzing entities from Amharic e-commerce data. It leverages state-of-the-art multilingual NLP models (such as XLM-Roberta, DistilBERT, and mBERT) for Named Entity Recognition (NER), and includes tools for data ingestion, preprocessing, model fine-tuning, comparison, explainability, and vendor scorecard generation.
 
-## Features
+## Objectives
+- **Extract structured information** (products, prices, locations, etc.) from Amharic e-commerce sources.
+- **Fine-tune and compare multiple NER models** to select the best for production.
+- **Provide explainability and scorecard tools** for model outputs and vendor evaluation.
 
-- **Telegram Scraper**: Fetches messages, media, and metadata from specified channels using Telethon.
-- **Amharic Text Preprocessor**: Leverages `etnltk` for robust, language-specific normalization and tokenization.
-- **Data Cleaner**: Includes utilities to remove duplicate entries and empty values, ensuring data quality.
-- **CoNLL Formatter**: Converts labeled data into the standard CoNLL format, ready for NER model training.
+## Main Features
 
-## Workflow
+### Data Ingestion
+- **Telegram Scraper:** Collects messages, media, and metadata from Amharic e-commerce Telegram channels using Telethon.
+- **Flexible Source Support:** Easily extendable to other data sources.
+- **Script:** `scripts/task_1_ingest.py`
 
-The project follows a sequential data pipeline, from raw data collection to a model-ready format.
+### Preprocessing
+- **Amharic Text Normalization:** Utilizes `etnltk` and custom rules for robust tokenization and normalization.
+- **Data Cleaning:** Removes duplicates, empty values, and irrelevant content.
+- **Script:** `src/preprocessing/amharic_text.py`
 
+### Data Labeling
+- **Manual & Automated Labeling:** Jupyter notebooks and scripts for labeling entities (e.g., PRODUCT, PRICE, LOCATION).
+- **CoNLL Formatting:** Converts labeled data into standard CoNLL format for NER training.
+- **Notebook:** `notebooks/2_Data_Labeling.ipynb`
 
-## Project Structure
+### NER Model Fine-Tuning
+- **Multilingual Model Support:** Fine-tune XLM-Roberta, DistilBERT, mBERT, or any HuggingFace-compatible model.
+- **Unified Pipeline:** All utilities in `src/ner/ner_pipeline.py`.
+- **Script:** `scripts/task_3_finetune.py`
+- **Notebook:** `notebooks/Fine_Tune_NER_Model.ipynb`
 
+### Model Comparison & Selection
+- **Automated Evaluation:** Fine-tune and evaluate multiple models on the same dataset.
+- **Metrics:** Compare by F1, accuracy, speed, and robustness.
+- **Script:** `scripts/task_4_compare.py`
+- **Notebook:** (You can create one using the script logic)
+
+### Explainability
+- **Model Interpretation:** Tools for explaining and visualizing NER model predictions.
+- **Script:** `scripts/model_explainability.py` (rename as needed)
+
+### Vendor Scorecard
+- **Vendor Analysis:** Generate scorecards for vendors based on extracted entities and model outputs.
+- **Script:** `scripts/task_6_vendor_scorecard.py`
+
+## Directory Structure
 ```
 Amharic-E-commerce-Data-Extractor/
-│
-├── data/
-│   ├── processed/      # Cleaned and labeled data
-│   └── raw/            # Raw scraped data from Telegram
-│
-├── notebooks/
-│   ├── 1_Data_Ingestion.ipynb
-│   └── 2_Data_Labeling.ipynb
-│
+├── data/                # Raw and processed datasets
+├── models/              # Saved and fine-tuned model checkpoints
+├── notebooks/           # Jupyter notebooks for exploration and tasks
+├── scripts/             # Main scripts for each pipeline task
 ├── src/
-│   ├── ingestion/
-│   │   └── telegram_scraper.py
-│   ├── preprocessing/
-│   │   └── amharic_text.py
-│   └── labeling/
-│       └── conll_formatter.py
-│
-├── scripts/
-|   ├── task_1_ingest.py
-|   └── task_2_label.py
-|
-├── requirements.txt
-└── README.md
+│   └── ner/
+│       └── ner_pipeline.py  # Unified NER data and training utilities
+│   └── ...             # Other modules (preprocessing, labeling, etc.)
+├── requirements.txt     # Python dependencies
+├── README.md            # Project documentation
 ```
 
-## Setup and Installation
+## Getting Started
 
-### Prerequisites
+### 1. Clone the Repository
+```bash
+git clone <repo-url>
+cd Amharic-E-commerce-Data-Extractor
+```
+
+### 2. Install Requirements
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Run Main Tasks
+- **Data Ingestion:**
+  ```bash
+  python scripts/task_1_ingest.py
+  ```
+- **Data Labeling:**
+  Use the provided Jupyter notebook: `notebooks/2_Data_Labeling.ipynb`
+- **NER Fine-Tuning:**
+  ```bash
+  python scripts/task_3_finetune.py
+  ```
+- **Model Comparison & Selection:**
+  ```bash
+  python scripts/task_4_compare.py
+  ```
+- **Vendor Scorecard:**
+  ```bash
+  python scripts/task_6_vendor_scorecard.py
+  ```
+
+### 4. Use in Jupyter Notebooks
+- All major pipeline functions are available in `src/ner/ner_pipeline.py`.
+- Example workflow:
+  ```python
+  from src.ner.ner_pipeline import (
+      load_conll_data, print_label_distribution, preview_samples,
+      create_ner_datasets, train_ner_model
+  )
+  conll_path = 'data/processed/labeled_dataset.conll'
+  all_tokens, all_labels, unique_labels = load_conll_data(conll_path)
+  print_label_distribution(all_labels)
+  preview_samples(all_tokens, all_labels, n=3)
+  # ... continue with dataset creation and training ...
+  ```
+- See `notebooks/Fine_Tune_NER_Model.ipynb` for a step-by-step example.
+
+## Requirements
 - Python 3.8+
-- Git
-
-### Installation Steps
-
-1.  **Clone the Repository:**
-    ```sh
-    git clone <[your-repository-url](https://github.com/wondifraw/Amharic-E-commerce-Data-Extractor.git)>
-    cd Amharic-E-commerce-Data-Extractor
-    ```
-
-2.  **Set Up a Virtual Environment:**
-    ```sh
-    python -m venv venv
-    source venv/bin/activate  # On Windows: venv\Scripts\activate
-    ```
-
-3.  **Install Dependencies:**
-    ```sh
-    pip install -r requirements.txt
-    ```
-4.  **Telegram API Credentials:**
-    You will need to get your own API credentials from [my.telegram.org](https://my.telegram.org).
-
-## Usage Guide
-
-The primary way to run the pipeline is through the Jupyter notebooks provided in the `notebooks/` directory.
-
-### 1. Data Ingestion & Preprocessing
-- Open `notebooks/1_Data_Ingestion.ipynb`.
-- **Provide Credentials**: In the second cell, replace the placeholder values for `API_ID` and `API_HASH` with your Telegram API keys.
-- **Run the Notebook**: Execute the cells sequentially. The notebook will:
-    1. Scrape raw data from the predefined Telegram channels.
-    2. Save the raw messages to `data/raw/`.
-    3. Preprocess the text data.
-    4. Save the cleaned, processed data to `data/processed/`.
-
-### 2. Automated Labeling & CoNLL Formatting
-- Open `notebooks/2_Data_Labeling.ipynb`.
-- **Run the Notebook**: Execute the cells to load the cleaned data and apply rule-based labeling for entities like `PRODUCT`, `PRICE`, `PHONE`, and `LOCATION`.
-- **Generate CoNLL File**: The final cell will format the labeled data into a `.conll` file and save it in `data/processed/`, ready for NER model training.
-
-### Using Scripts (Alternative)
-You can also run the pipeline using the Python scripts in the `scripts/` directory.
-
-```sh
-# Run data ingestion (requires API credentials as arguments)
-python scripts/task_1_ingest.py --api_id YOUR_ID --api_hash YOUR_HASH
-
-# Run data labeling
-python scripts/task_2_label.py
-```
+- See `requirements.txt` for all dependencies (transformers, datasets, scikit-learn, etc.)
 
 ## Contributing
+Contributions, issues, and feature requests are welcome! Please open an issue or submit a pull request.
 
-Contributions are highly encouraged! Please open an issue or submit a pull request with your proposed changes.
+## Contact
+For questions or support, please contact the project maintainer or open an issue on GitHub.
 
-## License
+## GitHub
+GitHub: [your-username](https://github.com/your-username)
 
-This project is licensed under the MIT License.
+---
+**Professional, modular, and ready for production or research use.**
