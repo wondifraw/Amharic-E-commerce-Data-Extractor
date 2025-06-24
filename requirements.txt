@@ -1,5 +1,17 @@
+# Task 1
 telethon
 pandas
 gspread
 oauth2client
-numpy 
+numpy
+
+# Task 3
+transformers
+datasets
+scikit-learn
+torch
+accelerate
+
+# Task 5
+shap
+lime 
