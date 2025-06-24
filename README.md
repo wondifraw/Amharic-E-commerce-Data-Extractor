@@ -146,7 +146,7 @@ Contributions, issues, and feature requests are welcome! Please open an issue or
 For questions or support, please contact the project maintainer or open an issue on GitHub.
 
 ## GitHub
-GitHub: [your-username](https://github.com/your-username)
+GitHub: [your-username](https://github.com/wondifraw)
 
 ---
 **Professional, modular, and ready for production or research use.**
