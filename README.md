@@ -658,22 +658,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For questions, issues, or contributions:
 
-- 📧 **Email**: your.email@example.com
-- 🐛 **Issues**: [GitHub Issues](https://github.com/yourusername/Amharic-E-commerce-Data-Extractor/issues)
-- 📖 **Documentation**: [Wiki](https://github.com/yourusername/Amharic-E-commerce-Data-Extractor/wiki)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/yourusername/Amharic-E-commerce-Data-Extractor/discussions)
+- 📧 **Email**: wondebdu@gmail.com
+- 🐛 **Issues**: [GitHub Issues](https://github.com/wondifraw/Amharic-E-commerce-Data-Extractor/issues)
+
+
 
 ---
 
-## 📊 Project Statistics
 
-- **Stars**: [![GitHub stars](https://img.shields.io/github/stars/yourusername/Amharic-E-commerce-Data-Extractor.svg)](https://github.com/yourusername/Amharic-E-commerce-Data-Extractor/stargazers)
-- **Forks**: [![GitHub forks](https://img.shields.io/github/forks/yourusername/Amharic-E-commerce-Data-Extractor.svg)](https://github.com/yourusername/Amharic-E-commerce-Data-Extractor/network)
-- **Issues**: [![GitHub issues](https://img.shields.io/github/issues/yourusername/Amharic-E-commerce-Data-Extractor.svg)](https://github.com/yourusername/Amharic-E-commerce-Data-Extractor/issues)
-- **License**: [![GitHub license](https://img.shields.io/github/license/yourusername/Amharic-E-commerce-Data-Extractor.svg)](https://github.com/yourusername/Amharic-E-commerce-Data-Extractor/blob/main/LICENSE)
 
----
-
-**⭐ Star this repository if you find it useful!**
-
-**🔄 Share with your network to help the Amharic NLP community grow!**
