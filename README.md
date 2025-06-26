@@ -637,9 +637,6 @@ mypy scripts/
 
 ---
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
@@ -649,7 +646,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **HuggingFace** for transformer models and datasets
 - **Amharic NLP Community** for language resources
 - **10 Academy** for project support and guidance
-- **Ethiopian Tech Community** for feedback and testing
 - **Open Source Contributors** for various libraries and tools
 
 ---
