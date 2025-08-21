@@ -1,0 +1,1 @@
+"""NER module for Ethiopian NER System"""

@@ -1,0 +1,160 @@
+version: '3.8'
+
+services:
+  # Main application
+  ethiopian-ner:
+    build: .
+    container_name: ethiopian-ner-app
+    ports:
+      - "8501:8501"  # Streamlit dashboard
+      - "8000:8000"  # API server (if implemented)
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+      - ./config:/app/config
+    environment:
+      - PYTHONPATH=/app/src
+      - ENVIRONMENT=production
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - ner-network
+    restart: unless-stopped
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: ethiopian-ner-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ner-network
+    restart: unless-stopped
+
+  # PostgreSQL for data storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: ethiopian-ner-postgres
+    environment:
+      POSTGRES_DB: ethiopian_ner
+      POSTGRES_USER: ner_user
+      POSTGRES_PASSWORD: ner_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    networks:
+      - ner-network
+    restart: unless-stopped
+
+  # Jupyter notebook for development
+  jupyter:
+    build: .
+    container_name: ethiopian-ner-jupyter
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token=''
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/app/notebooks
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./src:/app/src
+    environment:
+      - PYTHONPATH=/app/src
+    networks:
+      - ner-network
+    profiles:
+      - dev
+
+  # Model training service
+  trainer:
+    build: .
+    container_name: ethiopian-ner-trainer
+    command: python scripts/main_pipeline.py --step training
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+    environment:
+      - PYTHONPATH=/app/src
+      - CUDA_VISIBLE_DEVICES=0  # Use GPU if available
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - ner-network
+    profiles:
+      - training
+
+  # Data ingestion service
+  scraper:
+    build: .
+    container_name: ethiopian-ner-scraper
+    command: python scripts/main_pipeline.py --step ingestion --limit 1000
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    environment:
+      - PYTHONPATH=/app/src
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - ner-network
+    profiles:
+      - ingestion
+
+  # Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ethiopian-ner-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    networks:
+      - ner-network
+    profiles:
+      - monitoring
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ethiopian-ner-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+    networks:
+      - ner-network
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  ner-network:
+    driver: bridge
