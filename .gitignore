@@ -28,7 +28,9 @@ mlruns/
 .idea/
 *.swp
 data/
-
+*.md
+*.pdf
+.env.example
 # OS
 .DS_Store
 Thumbs.db
