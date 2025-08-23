@@ -1,1 +1,0 @@
-"""Evaluation module for Ethiopian NER System"""

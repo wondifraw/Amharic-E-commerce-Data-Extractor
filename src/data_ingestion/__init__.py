@@ -1,1 +1,0 @@
-"""Data ingestion module for Ethiopian NER System"""

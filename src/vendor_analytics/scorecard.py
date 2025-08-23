@@ -1,423 +1,311 @@
-"""
-Vendor Analytics and Scorecard for Micro-lending Decisions
-"""
+"""Vendor analytics and scorecard generation."""
 
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple
+import logging
 from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
-import seaborn as sns
-from loguru import logger
-import os
-import json
 
+logger = logging.getLogger(__name__)
 
-class VendorScorecard:
-    """Analyze vendor performance for micro-lending decisions"""
+class VendorAnalytics:
+    """Analytics engine for vendor scoring and evaluation."""
     
-    def __init__(self, config_path: str = "config/config.yaml"):
-        import yaml
-        with open(config_path, 'r', encoding='utf-8') as file:
-            self.config = yaml.safe_load(file)
+    def __init__(self):
+        self.vendor_metrics = {}
         
-        # Scoring weights from config
-        self.weights = self.config['vendor_analytics']['metrics']
-        self.thresholds = self.config['vendor_analytics']['thresholds']
-    
-    def calculate_posting_frequency(self, df: pd.DataFrame) -> float:
-        """Calculate average posts per week"""
-        if len(df) == 0:
-            return 0.0
+    def calculate_vendor_metrics(self, df: pd.DataFrame) -> Dict[str, Dict]:
+        """Calculate comprehensive metrics for each vendor/channel."""
+        vendor_metrics = {}
         
-        # Convert date column to datetime
-        df['date'] = pd.to_datetime(df['date'])
-        
-        # Calculate date range
-        date_range = (df['date'].max() - df['date'].min()).days
-        weeks = max(date_range / 7, 1)  # At least 1 week
-        
-        posts_per_week = len(df) / weeks
-        return posts_per_week
-    
-    def calculate_engagement_metrics(self, df: pd.DataFrame) -> Dict[str, float]:
-        """Calculate engagement metrics"""
-        if len(df) == 0:
-            return {'avg_views': 0, 'avg_forwards': 0, 'avg_replies': 0, 'engagement_rate': 0}
-        
-        # Handle missing values
-        df['views'] = pd.to_numeric(df['views'], errors='coerce').fillna(0)
-        df['forwards'] = pd.to_numeric(df['forwards'], errors='coerce').fillna(0)
-        df['replies'] = pd.to_numeric(df['replies'], errors='coerce').fillna(0)
-        
-        avg_views = df['views'].mean()
-        avg_forwards = df['forwards'].mean()
-        avg_replies = df['replies'].mean()
-        
-        # Engagement rate: (forwards + replies) / views
-        engagement_rate = (avg_forwards + avg_replies) / max(avg_views, 1)
-        
-        return {
-            'avg_views': avg_views,
-            'avg_forwards': avg_forwards,
-            'avg_replies': avg_replies,
-            'engagement_rate': engagement_rate
-        }
-    
-    def extract_prices_from_text(self, text: str) -> List[float]:
-        """Extract price values from text"""
-        import re
-        
-        if not isinstance(text, str):
-            return []
-        
-        prices = []
-        
-        # Price patterns
-        patterns = [
-            r'ዋጋ\s*(\d+)\s*ብር',
-            r'በ\s*(\d+)\s*ብር',
-            r'(\d+)\s*ብር',
-            r'ETB\s*(\d+)',
-            r'(\d+)\s*birr'
-        ]
-        
-        for pattern in patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            for match in matches:
-                try:
-                    price = float(match)
-                    if 10 <= price <= 100000:  # Reasonable price range
-                        prices.append(price)
-                except ValueError:
-                    continue
-        
-        return prices
-    
-    def calculate_price_metrics(self, df: pd.DataFrame) -> Dict[str, float]:
-        """Calculate price-related metrics"""
-        all_prices = []
-        
-        for text in df['text'].fillna(''):
-            prices = self.extract_prices_from_text(text)
-            all_prices.extend(prices)
-        
-        if not all_prices:
-            return {
-                'avg_price': 0,
-                'price_std': 0,
-                'price_consistency': 0,
-                'price_range': 0,
-                'total_products_with_prices': 0
-            }
-        
-        avg_price = np.mean(all_prices)
-        price_std = np.std(all_prices)
-        price_consistency = 1 - (price_std / max(avg_price, 1))  # Higher is more consistent
-        price_range = max(all_prices) - min(all_prices)
-        
-        return {
-            'avg_price': avg_price,
-            'price_std': price_std,
-            'price_consistency': max(0, price_consistency),  # Ensure non-negative
-            'price_range': price_range,
-            'total_products_with_prices': len(all_prices)
-        }
-    
-    def find_top_performing_post(self, df: pd.DataFrame) -> Dict:
-        """Find the post with highest views"""
-        if len(df) == 0:
-            return {'views': 0, 'text': '', 'date': None}
-        
-        df['views'] = pd.to_numeric(df['views'], errors='coerce').fillna(0)
-        top_post_idx = df['views'].idxmax()
-        top_post = df.loc[top_post_idx]
-        
-        # Extract price from top post
-        prices = self.extract_prices_from_text(top_post['text'])
-        top_price = prices[0] if prices else None
-        
-        return {
-            'views': top_post['views'],
-            'text': top_post['text'][:100] + '...' if len(top_post['text']) > 100 else top_post['text'],
-            'date': top_post['date'],
-            'price': top_price,
-            'message_id': top_post.get('id', 'N/A')
-        }
-    
-    def calculate_lending_score(self, vendor_metrics: Dict) -> float:
-        """Calculate composite lending score (0-100)"""
-        # Normalize metrics to 0-1 scale
-        
-        # Posting frequency (normalize to 0-1, assuming 10 posts/week is excellent)
-        freq_score = min(vendor_metrics['posting_frequency'] / 10, 1.0)
-        
-        # Average views (normalize to 0-1, assuming 1000 views is excellent)
-        views_score = min(vendor_metrics['engagement']['avg_views'] / 1000, 1.0)
-        
-        # Price consistency (already 0-1)
-        price_score = vendor_metrics['price_metrics']['price_consistency']
-        
-        # Engagement rate (normalize to 0-1, assuming 0.1 is excellent)
-        engagement_score = min(vendor_metrics['engagement']['engagement_rate'] / 0.1, 1.0)
-        
-        # Weighted composite score
-        lending_score = (
-            freq_score * self.weights['posting_frequency_weight'] +
-            views_score * self.weights['avg_views_weight'] +
-            price_score * self.weights['price_consistency_weight'] +
-            engagement_score * self.weights['engagement_weight']
-        ) * 100
-        
-        return min(lending_score, 100)  # Cap at 100
-    
-    def analyze_vendor(self, df: pd.DataFrame, vendor_name: str) -> Dict:
-        """Comprehensive vendor analysis"""
-        logger.info(f"Analyzing vendor: {vendor_name}")
-        
-        # Filter data for this vendor
-        vendor_df = df[df['channel'] == vendor_name].copy()
-        
-        if len(vendor_df) < self.thresholds['min_posts_for_analysis']:
-            logger.warning(f"Insufficient data for {vendor_name}: {len(vendor_df)} posts")
-            return {
-                'vendor_name': vendor_name,
-                'error': f'Insufficient data: {len(vendor_df)} posts (minimum: {self.thresholds["min_posts_for_analysis"]})'
-            }
-        
-        # Calculate all metrics
-        posting_frequency = self.calculate_posting_frequency(vendor_df)
-        engagement_metrics = self.calculate_engagement_metrics(vendor_df)
-        price_metrics = self.calculate_price_metrics(vendor_df)
-        top_post = self.find_top_performing_post(vendor_df)
-        
-        vendor_metrics = {
-            'vendor_name': vendor_name,
-            'total_posts': len(vendor_df),
-            'posting_frequency': posting_frequency,
-            'engagement': engagement_metrics,
-            'price_metrics': price_metrics,
-            'top_performing_post': top_post,
-            'analysis_date': datetime.now().isoformat()
-        }
-        
-        # Calculate lending score
-        lending_score = self.calculate_lending_score(vendor_metrics)
-        vendor_metrics['lending_score'] = lending_score
-        
-        # Risk classification
-        if lending_score >= 70:
-            risk_category = "High Priority"
-            recommendation = "Ready for micro-lending"
-        elif lending_score >= 40:
-            risk_category = "Medium Priority"
-            recommendation = "Requires additional assessment"
-        else:
-            risk_category = "Low Priority"
-            recommendation = "High risk, not recommended"
-        
-        vendor_metrics['risk_category'] = risk_category
-        vendor_metrics['recommendation'] = recommendation
+        for channel in df['channel'].unique():
+            channel_data = df[df['channel'] == channel].copy()
+            
+            if len(channel_data) == 0:
+                continue
+            
+            # Basic activity metrics
+            metrics = self._calculate_activity_metrics(channel_data)
+            
+            # Engagement metrics
+            engagement_metrics = self._calculate_engagement_metrics(channel_data)
+            metrics.update(engagement_metrics)
+            
+            # Business profile metrics (using NER results if available)
+            business_metrics = self._calculate_business_metrics(channel_data)
+            metrics.update(business_metrics)
+            
+            # Performance metrics
+            performance_metrics = self._calculate_performance_metrics(channel_data)
+            metrics.update(performance_metrics)
+            
+            vendor_metrics[channel] = metrics
         
         return vendor_metrics
     
-    def analyze_all_vendors(self, df: pd.DataFrame) -> Dict[str, Dict]:
-        """Analyze all vendors in the dataset"""
-        vendors = df['channel'].unique()
-        vendor_analyses = {}
-        
-        for vendor in vendors:
-            analysis = self.analyze_vendor(df, vendor)
-            vendor_analyses[vendor] = analysis
-        
-        return vendor_analyses
-    
-    def create_vendor_comparison_table(self, vendor_analyses: Dict[str, Dict]) -> pd.DataFrame:
-        """Create comparison table for all vendors"""
-        comparison_data = []
-        
-        for vendor_name, analysis in vendor_analyses.items():
-            if 'error' in analysis:
-                continue
+    def _calculate_activity_metrics(self, channel_data: pd.DataFrame) -> Dict:
+        """Calculate activity and consistency metrics."""
+        try:
+            # Convert date column if it's string
+            if 'date' in channel_data.columns:
+                channel_data['date'] = pd.to_datetime(channel_data['date'])
+                
+                # Calculate posting frequency
+                date_range = (channel_data['date'].max() - channel_data['date'].min()).days
+                if date_range > 0:
+                    posts_per_week = len(channel_data) * 7 / date_range
+                else:
+                    posts_per_week = len(channel_data)
+            else:
+                posts_per_week = len(channel_data) / 4  # Assume 4 weeks of data
             
-            comparison_data.append({
-                'Vendor': vendor_name.replace('@', ''),
-                'Avg. Views/Post': round(analysis['engagement']['avg_views'], 1),
-                'Posts/Week': round(analysis['posting_frequency'], 1),
-                'Avg. Price (ETB)': round(analysis['price_metrics']['avg_price'], 0) if analysis['price_metrics']['avg_price'] > 0 else 'N/A',
-                'Price Consistency': round(analysis['price_metrics']['price_consistency'], 2),
-                'Engagement Rate': round(analysis['engagement']['engagement_rate'], 3),
-                'Lending Score': round(analysis['lending_score'], 1),
-                'Risk Category': analysis['risk_category']
-            })
-        
-        return pd.DataFrame(comparison_data).sort_values('Lending Score', ascending=False)
-    
-    def create_visualizations(self, vendor_analyses: Dict[str, Dict], output_dir: str = "models/vendor_analytics/"):
-        """Create vendor analytics visualizations"""
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Prepare data for plotting
-        valid_analyses = {k: v for k, v in vendor_analyses.items() if 'error' not in v}
-        
-        if not valid_analyses:
-            logger.warning("No valid vendor analyses for visualization")
-            return
-        
-        vendors = list(valid_analyses.keys())
-        lending_scores = [valid_analyses[v]['lending_score'] for v in vendors]
-        avg_views = [valid_analyses[v]['engagement']['avg_views'] for v in vendors]
-        posting_freq = [valid_analyses[v]['posting_frequency'] for v in vendors]
-        avg_prices = [valid_analyses[v]['price_metrics']['avg_price'] for v in vendors]
-        
-        # Create comprehensive dashboard
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
-        
-        # 1. Lending Scores
-        colors = ['green' if score >= 70 else 'orange' if score >= 40 else 'red' for score in lending_scores]
-        bars1 = ax1.bar(range(len(vendors)), lending_scores, color=colors, alpha=0.7)
-        ax1.set_title('Vendor Lending Scores', fontsize=14, fontweight='bold')
-        ax1.set_ylabel('Lending Score')
-        ax1.set_xticks(range(len(vendors)))
-        ax1.set_xticklabels([v.replace('@', '') for v in vendors], rotation=45, ha='right')
-        ax1.axhline(y=70, color='green', linestyle='--', alpha=0.5, label='High Priority (≥70)')
-        ax1.axhline(y=40, color='orange', linestyle='--', alpha=0.5, label='Medium Priority (≥40)')
-        ax1.legend()
-        
-        # Add value labels on bars
-        for bar, score in zip(bars1, lending_scores):
-            ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1, 
-                    f'{score:.1f}', ha='center', va='bottom', fontweight='bold')
-        
-        # 2. Views vs Posting Frequency
-        ax2.scatter(posting_freq, avg_views, s=100, alpha=0.7, c=lending_scores, cmap='RdYlGn')
-        ax2.set_xlabel('Posts per Week')
-        ax2.set_ylabel('Average Views per Post')
-        ax2.set_title('Engagement: Views vs Posting Frequency')
-        
-        for i, vendor in enumerate(vendors):
-            ax2.annotate(vendor.replace('@', ''), (posting_freq[i], avg_views[i]), 
-                        xytext=(5, 5), textcoords='offset points', fontsize=8)
-        
-        # 3. Price Distribution
-        valid_prices = [p for p in avg_prices if p > 0]
-        if valid_prices:
-            ax3.hist(valid_prices, bins=10, alpha=0.7, color='skyblue', edgecolor='black')
-            ax3.set_xlabel('Average Price (ETB)')
-            ax3.set_ylabel('Number of Vendors')
-            ax3.set_title('Distribution of Average Prices')
-        else:
-            ax3.text(0.5, 0.5, 'No price data available', ha='center', va='center', transform=ax3.transAxes)
-            ax3.set_title('Price Distribution - No Data')
-        
-        # 4. Risk Category Distribution
-        risk_categories = [valid_analyses[v]['risk_category'] for v in vendors]
-        risk_counts = pd.Series(risk_categories).value_counts()
-        
-        colors_pie = {'High Priority': 'green', 'Medium Priority': 'orange', 'Low Priority': 'red'}
-        pie_colors = [colors_pie.get(cat, 'gray') for cat in risk_counts.index]
-        
-        ax4.pie(risk_counts.values, labels=risk_counts.index, autopct='%1.1f%%', 
-                colors=pie_colors, startangle=90)
-        ax4.set_title('Risk Category Distribution')
-        
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, 'vendor_analytics_dashboard.png'), 
-                   dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        logger.info(f"Vendor analytics visualizations saved to {output_dir}")
-    
-    def generate_lending_report(self, vendor_analyses: Dict[str, Dict], output_path: str = "models/vendor_analytics/lending_report.json"):
-        """Generate comprehensive lending report"""
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
-        # Create summary statistics
-        valid_analyses = {k: v for k, v in vendor_analyses.items() if 'error' not in v}
-        
-        if not valid_analyses:
-            logger.warning("No valid analyses for report generation")
-            return
-        
-        lending_scores = [v['lending_score'] for v in valid_analyses.values()]
-        risk_categories = [v['risk_category'] for v in valid_analyses.values()]
-        
-        summary = {
-            'report_date': datetime.now().isoformat(),
-            'total_vendors_analyzed': len(valid_analyses),
-            'lending_score_stats': {
-                'mean': np.mean(lending_scores),
-                'median': np.median(lending_scores),
-                'std': np.std(lending_scores),
-                'min': np.min(lending_scores),
-                'max': np.max(lending_scores)
-            },
-            'risk_distribution': dict(pd.Series(risk_categories).value_counts()),
-            'top_vendors': sorted(valid_analyses.items(), 
-                                key=lambda x: x[1]['lending_score'], reverse=True)[:5]
-        }
-        
-        report = {
-            'summary': summary,
-            'detailed_analyses': vendor_analyses,
-            'methodology': {
-                'scoring_weights': self.weights,
-                'thresholds': self.thresholds,
-                'score_interpretation': {
-                    'high_priority': '≥70 - Ready for micro-lending',
-                    'medium_priority': '40-69 - Requires additional assessment',
-                    'low_priority': '<40 - High risk, not recommended'
-                }
+            return {
+                'total_posts': len(channel_data),
+                'posts_per_week': round(posts_per_week, 2),
+                'activity_score': min(posts_per_week / 10, 1.0)  # Normalize to 0-1
             }
-        }
+            
+        except Exception as e:
+            logger.warning(f"Error calculating activity metrics: {e}")
+            return {
+                'total_posts': len(channel_data),
+                'posts_per_week': 0,
+                'activity_score': 0
+            }
+    
+    def _calculate_engagement_metrics(self, channel_data: pd.DataFrame) -> Dict:
+        """Calculate engagement and reach metrics."""
+        try:
+            views = channel_data['views'].fillna(0)
+            forwards = channel_data['forwards'].fillna(0)
+            
+            avg_views = views.mean()
+            max_views = views.max()
+            avg_forwards = forwards.mean()
+            
+            # Find top performing post
+            top_post_idx = views.idxmax()
+            top_post_text = channel_data.loc[top_post_idx, 'text'] if not views.empty else ""
+            
+            return {
+                'avg_views_per_post': round(avg_views, 2),
+                'max_views': int(max_views),
+                'avg_forwards': round(avg_forwards, 2),
+                'top_post_text': top_post_text[:100] + "..." if len(top_post_text) > 100 else top_post_text,
+                'engagement_score': min(avg_views / 1000, 1.0)  # Normalize to 0-1
+            }
+            
+        except Exception as e:
+            logger.warning(f"Error calculating engagement metrics: {e}")
+            return {
+                'avg_views_per_post': 0,
+                'max_views': 0,
+                'avg_forwards': 0,
+                'top_post_text': "",
+                'engagement_score': 0
+            }
+    
+    def _calculate_business_metrics(self, channel_data: pd.DataFrame) -> Dict:
+        """Calculate business profile metrics using extracted entities."""
+        try:
+            prices = []
+            products = []
+            locations = []
+            
+            # Extract prices from entity hints if available
+            if 'entity_hints' in channel_data.columns:
+                for hints in channel_data['entity_hints'].fillna({}):
+                    if isinstance(hints, dict):
+                        prices.extend(hints.get('prices', []))
+                        products.extend(hints.get('products', []))
+                        locations.extend(hints.get('locations', []))
+            
+            # Convert price strings to numbers
+            numeric_prices = []
+            for price in prices:
+                try:
+                    # Extract numbers from price strings
+                    import re
+                    numbers = re.findall(r'\d+', str(price))
+                    if numbers:
+                        numeric_prices.append(int(numbers[0]))
+                except:
+                    continue
+            
+            avg_price = np.mean(numeric_prices) if numeric_prices else 0
+            unique_products = len(set(products))
+            unique_locations = len(set(locations))
+            
+            return {
+                'avg_price_etb': round(avg_price, 2),
+                'price_range': f"{min(numeric_prices)}-{max(numeric_prices)}" if numeric_prices else "N/A",
+                'unique_products': unique_products,
+                'unique_locations': unique_locations,
+                'business_diversity_score': min((unique_products + unique_locations) / 10, 1.0)
+            }
+            
+        except Exception as e:
+            logger.warning(f"Error calculating business metrics: {e}")
+            return {
+                'avg_price_etb': 0,
+                'price_range': "N/A",
+                'unique_products': 0,
+                'unique_locations': 0,
+                'business_diversity_score': 0
+            }
+    
+    def _calculate_performance_metrics(self, channel_data: pd.DataFrame) -> Dict:
+        """Calculate overall performance metrics."""
+        try:
+            # Text quality metrics
+            avg_text_length = channel_data['text'].str.len().mean()
+            
+            # Consistency metrics (posting pattern)
+            if 'date' in channel_data.columns:
+                channel_data['date'] = pd.to_datetime(channel_data['date'])
+                daily_posts = channel_data.groupby(channel_data['date'].dt.date).size()
+                posting_consistency = 1 - (daily_posts.std() / (daily_posts.mean() + 1))
+            else:
+                posting_consistency = 0.5  # Default moderate consistency
+            
+            return {
+                'avg_text_length': round(avg_text_length, 2),
+                'posting_consistency': round(max(0, posting_consistency), 2),
+                'content_quality_score': min(avg_text_length / 200, 1.0)  # Normalize
+            }
+            
+        except Exception as e:
+            logger.warning(f"Error calculating performance metrics: {e}")
+            return {
+                'avg_text_length': 0,
+                'posting_consistency': 0,
+                'content_quality_score': 0
+            }
+    
+    def calculate_lending_score(self, metrics: Dict) -> float:
+        """Calculate composite lending score."""
+        try:
+            # Weighted scoring formula
+            score = (
+                metrics.get('engagement_score', 0) * 0.4 +
+                metrics.get('activity_score', 0) * 0.3 +
+                metrics.get('business_diversity_score', 0) * 0.2 +
+                metrics.get('content_quality_score', 0) * 0.1
+            )
+            
+            return round(score * 100, 2)  # Convert to 0-100 scale
+            
+        except Exception as e:
+            logger.warning(f"Error calculating lending score: {e}")
+            return 0.0
+    
+    def generate_vendor_scorecard(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Generate comprehensive vendor scorecard."""
+        try:
+            vendor_metrics = self.calculate_vendor_metrics(df)
+            
+            scorecard_data = []
+            
+            for channel, metrics in vendor_metrics.items():
+                lending_score = self.calculate_lending_score(metrics)
+                
+                scorecard_row = {
+                    'Vendor_Channel': channel.replace('@', ''),
+                    'Avg_Views_Per_Post': metrics.get('avg_views_per_post', 0),
+                    'Posts_Per_Week': metrics.get('posts_per_week', 0),
+                    'Avg_Price_ETB': metrics.get('avg_price_etb', 0),
+                    'Total_Posts': metrics.get('total_posts', 0),
+                    'Max_Views': metrics.get('max_views', 0),
+                    'Unique_Products': metrics.get('unique_products', 0),
+                    'Business_Diversity': metrics.get('business_diversity_score', 0),
+                    'Content_Quality': metrics.get('content_quality_score', 0),
+                    'Lending_Score': lending_score,
+                    'Risk_Category': self._categorize_risk(lending_score)
+                }
+                
+                scorecard_data.append(scorecard_row)
+            
+            scorecard_df = pd.DataFrame(scorecard_data)
+            
+            # Sort by lending score
+            scorecard_df = scorecard_df.sort_values('Lending_Score', ascending=False)
+            
+            return scorecard_df
+            
+        except Exception as e:
+            logger.error(f"Error generating scorecard: {e}")
+            return pd.DataFrame()
+    
+    def _categorize_risk(self, lending_score: float) -> str:
+        """Categorize vendor risk based on lending score."""
+        if lending_score >= 80:
+            return "Low Risk"
+        elif lending_score >= 60:
+            return "Medium Risk"
+        elif lending_score >= 40:
+            return "High Risk"
+        else:
+            return "Very High Risk"
+    
+    def generate_detailed_report(self, df: pd.DataFrame, output_path: str) -> None:
+        """Generate detailed vendor analytics report."""
+        try:
+            vendor_metrics = self.calculate_vendor_metrics(df)
+            scorecard_df = self.generate_vendor_scorecard(df)
+            
+            # Create comprehensive report
+            report = {
+                'summary': {
+                    'total_vendors_analyzed': len(vendor_metrics),
+                    'avg_lending_score': scorecard_df['Lending_Score'].mean() if not scorecard_df.empty else 0,
+                    'top_vendor': scorecard_df.iloc[0]['Vendor_Channel'] if not scorecard_df.empty else "N/A",
+                    'analysis_date': datetime.now().isoformat()
+                },
+                'vendor_rankings': scorecard_df.to_dict('records'),
+                'detailed_metrics': vendor_metrics,
+                'recommendations': self._generate_lending_recommendations(scorecard_df)
+            }
+            
+            # Save report
+            import json
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(report, f, indent=2, ensure_ascii=False)
+            
+            # Save scorecard CSV
+            csv_path = output_path.replace('.json', '_scorecard.csv')
+            scorecard_df.to_csv(csv_path, index=False)
+            
+            logger.info(f"Vendor analytics report saved to {output_path}")
+            logger.info(f"Vendor scorecard saved to {csv_path}")
+            
+        except Exception as e:
+            logger.error(f"Error generating detailed report: {e}")
+    
+    def _generate_lending_recommendations(self, scorecard_df: pd.DataFrame) -> List[str]:
+        """Generate lending recommendations based on analysis."""
+        if scorecard_df.empty:
+            return ["No vendor data available for analysis."]
         
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(report, f, indent=2, ensure_ascii=False)
+        recommendations = []
         
-        logger.info(f"Lending report saved to {output_path}")
-        return report
-
-
-def main():
-    """Test vendor analytics system"""
-    # Create sample data for testing
-    sample_data = {
-        'channel': ['@ethio_market_place'] * 20 + ['@addis_shopping'] * 15 + ['@bole_market'] * 25,
-        'text': [
-            'ሰላም! የሕፃናት ጠርሙስ ዋጋ 150 ብር ነው። ቦሌ አካባቢ ነው።',
-            'አዲስ አበባ ውስጥ የሚሸጥ ልብስ በ 200 ብር',
-            'መርካቶ ውስጥ ጫማ 300 ብር',
-            'ፒያሳ አካባቢ ስልክ ETB 5000',
-            'Baby bottle for sale 150 birr in Bole'
-        ] * 12,
-        'views': np.random.randint(50, 1000, 60),
-        'forwards': np.random.randint(0, 50, 60),
-        'replies': np.random.randint(0, 20, 60),
-        'date': pd.date_range('2024-01-01', periods=60, freq='D')
-    }
-    
-    df = pd.DataFrame(sample_data)
-    
-    # Initialize scorecard
-    scorecard = VendorScorecard()
-    
-    # Analyze all vendors
-    vendor_analyses = scorecard.analyze_all_vendors(df)
-    
-    # Create comparison table
-    comparison_table = scorecard.create_vendor_comparison_table(vendor_analyses)
-    print("Vendor Scorecard:")
-    print(comparison_table.to_string(index=False))
-    
-    # Create visualizations
-    scorecard.create_visualizations(vendor_analyses)
-    
-    # Generate report
-    report = scorecard.generate_lending_report(vendor_analyses)
-    
-    print(f"\nAnalyzed {len(vendor_analyses)} vendors")
-    print(f"High Priority vendors: {len([v for v in vendor_analyses.values() if v.get('risk_category') == 'High Priority'])}")
-
-
-if __name__ == "__main__":
-    main()
+        # Top performers
+        top_vendors = scorecard_df[scorecard_df['Lending_Score'] >= 70]
+        if not top_vendors.empty:
+            recommendations.append(f"Consider priority lending to {len(top_vendors)} high-scoring vendors.")
+        
+        # Risk analysis
+        high_risk = scorecard_df[scorecard_df['Risk_Category'].isin(['High Risk', 'Very High Risk'])]
+        if not high_risk.empty:
+            recommendations.append(f"Exercise caution with {len(high_risk)} high-risk vendors.")
+        
+        # Activity patterns
+        active_vendors = scorecard_df[scorecard_df['Posts_Per_Week'] >= 5]
+        if not active_vendors.empty:
+            recommendations.append(f"{len(active_vendors)} vendors show high activity levels.")
+        
+        # Engagement insights
+        high_engagement = scorecard_df[scorecard_df['Avg_Views_Per_Post'] >= 500]
+        if not high_engagement.empty:
+            recommendations.append(f"{len(high_engagement)} vendors demonstrate strong market reach.")
+        
+        return recommendations
