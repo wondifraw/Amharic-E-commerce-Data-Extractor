@@ -43,8 +43,13 @@ def load_data():
         with open("data/processed/vendor_analytics_report.json", 'r', encoding='utf-8') as f:
             vendor_data = json.load(f)
         
-        return comparison_df, report, vendor_data
-    except:
+        # Load vendor scorecard CSV
+        vendor_scorecard = pd.read_csv("data/processed/vendor_analytics_report_scorecard.csv")
+        
+        return comparison_df, report, vendor_data, vendor_scorecard
+        
+    except Exception as e:
+        st.warning(f"Could not load data files: {e}")
         # Create sample data if files don't exist
         comparison_df = pd.DataFrame({
             'model': ['xlm-roberta-base', 'distilbert-base-multilingual-cased', 'bert-base-multilingual-cased'],
@@ -61,17 +66,16 @@ def load_data():
         }
         
         vendor_data = {
-            'vendors': {
-                'ethio_market_place': {'activity_score': 85, 'engagement_score': 78, 'lending_score': 82},
-                'addis_shopping': {'activity_score': 72, 'engagement_score': 65, 'lending_score': 68}
-            }
+            'recommendations': ['Run analytics to get recommendations']
         }
         
-        return comparison_df, report, vendor_data
+        vendor_scorecard = pd.DataFrame()
+        
+        return comparison_df, report, vendor_data, vendor_scorecard
 
 # Initialize
 predictor = SimpleNERPredictor()
-comparison_df, report, vendor_data = load_data()
+comparison_df, report, vendor_data, vendor_scorecard = load_data()
 
 # Header
 st.title("🔍 Amharic NER Analytics Dashboard")
@@ -175,61 +179,91 @@ elif page == "Model Performance":
 elif page == "Vendor Analytics":
     st.header("🏪 Vendor Performance Analytics")
     
-    # Vendor scorecard
-    vendors = vendor_data.get('vendors', {})
-    
-    if vendors:
-        vendor_df = pd.DataFrame(vendors).T
-        vendor_df.index.name = 'Vendor'
-        vendor_df = vendor_df.reset_index()
+    # Check if we have vendor scorecard data
+    if not vendor_scorecard.empty:
+        # Summary metrics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Total Vendors", len(vendor_scorecard))
+        with col2:
+            st.metric("Avg Lending Score", f"{vendor_scorecard['Lending_Score'].mean():.1f}")
+        with col3:
+            top_vendor = vendor_scorecard.iloc[0]['Vendor_Channel']
+            st.metric("Top Performer", top_vendor)
+        with col4:
+            low_risk_count = len(vendor_scorecard[vendor_scorecard['Risk_Category'] == 'Low Risk'])
+            st.metric("Low Risk Vendors", low_risk_count)
         
         # Top vendors
-        st.subheader("🏆 Top Performing Vendors")
-        top_vendors = vendor_df.nlargest(3, 'lending_score')
+        st.subheader("🏆 Vendor Rankings")
         
-        for i, (_, vendor) in enumerate(top_vendors.iterrows()):
-            col1, col2, col3, col4 = st.columns(4)
+        for i, (_, vendor) in enumerate(vendor_scorecard.head(5).iterrows()):
+            col1, col2, col3, col4, col5 = st.columns(5)
             
             with col1:
-                st.write(f"**{i+1}. {vendor['Vendor']}**")
+                st.write(f"**{i+1}. {vendor['Vendor_Channel']}**")
             with col2:
-                st.metric("Activity", f"{vendor['activity_score']}/100")
+                st.metric("Score", f"{vendor['Lending_Score']:.1f}")
             with col3:
-                st.metric("Engagement", f"{vendor['engagement_score']}/100")
+                color = {"Low Risk": "🟢", "Medium Risk": "🟡", "High Risk": "🟠", "Very High Risk": "🔴"}
+                st.write(f"{color.get(vendor['Risk_Category'], '⚪')} {vendor['Risk_Category']}")
             with col4:
-                st.metric("Lending Score", f"{vendor['lending_score']}/100")
+                st.metric("Views/Post", f"{vendor['Avg_Views_Per_Post']:.0f}")
+            with col5:
+                st.metric("Posts/Week", f"{vendor['Posts_Per_Week']:.1f}")
         
-        # Vendor comparison chart
-        fig = go.Figure()
+        # Risk distribution chart
+        risk_counts = vendor_scorecard['Risk_Category'].value_counts()
+        fig_pie = px.pie(values=risk_counts.values, names=risk_counts.index,
+                        title="Risk Distribution",
+                        color_discrete_map={
+                            'Low Risk': '#00ff00',
+                            'Medium Risk': '#ffff00', 
+                            'High Risk': '#ff8000',
+                            'Very High Risk': '#ff0000'
+                        })
         
-        fig.add_trace(go.Scatter(
-            x=vendor_df['activity_score'],
-            y=vendor_df['engagement_score'],
-            mode='markers+text',
-            text=vendor_df['Vendor'],
-            textposition="top center",
-            marker=dict(
-                size=vendor_df['lending_score']/2,
-                color=vendor_df['lending_score'],
-                colorscale='viridis',
-                showscale=True
-            )
-        ))
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(fig_pie, use_container_width=True)
         
-        fig.update_layout(
-            title="Vendor Performance Matrix",
-            xaxis_title="Activity Score",
-            yaxis_title="Engagement Score"
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
+        # Lending score distribution
+        with col2:
+            fig_bar = px.bar(vendor_scorecard, x='Vendor_Channel', y='Lending_Score',
+                           title="Lending Scores by Vendor",
+                           color='Risk_Category',
+                           color_discrete_map={
+                               'Low Risk': '#00ff00',
+                               'Medium Risk': '#ffff00',
+                               'High Risk': '#ff8000', 
+                               'Very High Risk': '#ff0000'
+                           })
+            fig_bar.update_layout(xaxis_tickangle=45)
+            st.plotly_chart(fig_bar, use_container_width=True)
         
         # Detailed vendor table
-        st.subheader("📊 Vendor Details")
-        st.dataframe(vendor_df, use_container_width=True)
+        st.subheader("📊 Detailed Vendor Analytics")
+        st.dataframe(vendor_scorecard, use_container_width=True)
+        
+        # Recommendations
+        if 'recommendations' in vendor_data:
+            st.subheader("💡 Recommendations")
+            for rec in vendor_data['recommendations']:
+                st.write(f"• {rec}")
     
     else:
-        st.info("No vendor data available. Run vendor analytics to generate data.")
+        st.warning("⚠️ No vendor data available.")
+        if st.button("🔄 Run Vendor Analytics", type="primary"):
+            with st.spinner("Running vendor analytics..."):
+                import subprocess
+                result = subprocess.run(["python", "run_analytics.py"], 
+                                      capture_output=True, text=True)
+                if result.returncode == 0:
+                    st.success("✅ Vendor analytics completed! Refresh the page to see results.")
+                    st.rerun()
+                else:
+                    st.error(f"❌ Analytics failed: {result.stderr}")
 
 # Footer
 st.markdown("---")
